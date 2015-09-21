@@ -147,7 +147,7 @@ window.doppler = (function() {
       navigator.getUserMedia_({ audio: { optional: [{ echoCancellation: false }] } }, onStreamSuccess, onStreamError);
     },
     stop: function () {
-      console.log('stop')
+      console.log('Stop Doppler')
 
       osc.stop();
       ctx.close();
@@ -161,6 +161,10 @@ window.doppler = (function() {
       if (event == 'sample'){
         callbacks.sample = callback;
       }
+    },
+
+    isActive: function(){
+      return isRunning;
     }
   }
-})(window, document);
+})();
