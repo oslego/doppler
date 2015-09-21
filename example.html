@@ -16,9 +16,10 @@
     <div id="box"></div>
     <script src="doppler.js"></script>
     <script>
-      window.addEventListener('load', function() {
-        window.doppler.init(function(bandwidth) {
+
+        function onSample(bandwidth) {
           var threshold = 4;
+          console.log(bandwidth)
           if (bandwidth.left > threshold || bandwidth.right > threshold) {
             var scale    = 10;
             var baseSize = 100;
@@ -27,8 +28,20 @@
             document.getElementById('box').style.width  = dimension;
             document.getElementById('box').style.height = dimension;
           }
-        });
-      });
+        }
+
+        doppler.start();
+
+        doppler.on('sample', onSample)
+
+        setTimeout(function(){
+              doppler.stop()
+        }, 500)
+
+        setTimeout(function(){
+              doppler.start()
+        }, 1000)
+
     </script>
   </body>
 </html>
