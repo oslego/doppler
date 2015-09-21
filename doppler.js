@@ -1,18 +1,25 @@
 window.doppler = (function() {
-  var AuContext = (window.AudioContext ||
+  var AudioContext = (window.AudioContext ||
                    window.webkitAudioContext ||
                    window.mozAudioContext ||
                    window.oAudioContext ||
                    window.msAudioContext);
 
-  var ctx = new AuContext();
-  var osc = ctx.createOscillator();
+  // Global AudioContext instance and Oscilator
+  var ctx;
+  var osc;
+
   // This is just preliminary, we'll actually do a quick scan
   // (as suggested in the paper) to optimize this.
   var freq = 20000;
 
   // See paper for this particular choice of frequencies
   var relevantFreqWindow = 33;
+
+  var isRunning = false;
+  var callbacks = {};
+  var loop;
+  var track;
 
   var getBandwidth = function(analyser, freqs) {
     var primaryTone = freqToIndex(analyser, freq);
@@ -75,30 +82,45 @@ window.doppler = (function() {
     }
   };
 
-  var readMicInterval = 0;
-  var readMic = function(analyser, userCallback) {
+  function readMic(analyser) {
     var audioData = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(audioData);
 
     var band = getBandwidth(analyser, audioData);
-    userCallback(band);
 
-    readMicInterval = setTimeout(readMic, 1, analyser, userCallback);
+    fire('sample', band);
+
+    if (isRunning){
+      loop = window.requestAnimationFrame(function(){
+        readMic(analyser)
+      })
+    }
   };
 
-  var handleMic = function(stream, callback, userCallback) {
-    // Mic
-    var mic = ctx.createMediaStreamSource(stream);
-    var analyser = ctx.createAnalyser();
+  function fire(event, arg){
+    if (typeof callbacks[event] == 'function'){
+      callbacks[event].call(this, arg)
+    }
+  }
 
+  function onStreamSuccess(stream) {
+
+    // Set globals
+    ctx = new AudioContext();
+    osc = ctx.createOscillator();
+    isRunning = true;
+    track = stream.getTracks()[0]; // store MediaStreamTrack for stopping later
+
+    var analyser = ctx.createAnalyser();
     analyser.smoothingTimeConstant = 0.5;
     analyser.fftSize = 2048;
 
+    var mic = ctx.createMediaStreamSource(stream);
     mic.connect(analyser);
 
     // Doppler tone
     osc.frequency.value = freq;
-    osc.type = osc.SINE;
+    osc.type = 'sine';
     osc.start(0);
     osc.connect(ctx.destination);
 
@@ -110,21 +132,35 @@ window.doppler = (function() {
       freq = optimizeFrequency(osc, analyser, 19000, 22000);
       osc.frequency.value = freq;
 
-      clearInterval(readMicInterval);
-      callback(analyser, userCallback);
-    });
+      readMic(analyser);
+    }, 100);
   };
 
+  function onStreamError(err){
+    console.log('Error:', err)
+  }
+
   return {
-    init: function(callback) {
+    start: function() {
       navigator.getUserMedia_ = (navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia);
-      navigator.getUserMedia_({ audio: { optional: [{ echoCancellation: false }] } }, function(stream) {
-        handleMic(stream, readMic, callback);
-      }, function() { console.log('Error!') });
+
+      navigator.getUserMedia_({ audio: { optional: [{ echoCancellation: false }] } }, onStreamSuccess, onStreamError);
     },
     stop: function () {
-      clearInterval(readMicInterval);
+      console.log('stop')
+
+      osc.stop();
+      ctx.close();
+      track.stop();
+      isRunning = false;
+
+      window.cancelAnimationFrame(loop);
+    },
+
+    on: function (event, callback) {
+      if (event == 'sample'){
+        callbacks.sample = callback;
+      }
     }
   }
 })(window, document);
-
